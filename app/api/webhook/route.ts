@@ -1,47 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
  
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const orderId = body?.data?.id;
  
+  const orderId = body?.data?.id;
   if (!orderId) {
-    return NextResponse.json({ error: "Missing order ID" }, { status: 400 });
+    return NextResponse.json({ error: 'Order ID not found in webhook' }, { status: 400 });
   }
-  const storeHash = "nhff37cehc";
-  const accessToken = "7x177ybng0ujl4avpfueyb41nk144st";
+ 
+  const storeHash = process.env.BC_STORE_HASH;
+  const token = process.env.BC_API_TOKEN;
+ 
+const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
  
   try {
-    const response = await fetch(
-      `https://api.bigcommerce.com/stores/$nhff37cehc/v2/orders/${orderId}`,
-      {
-        method: "GET",
-        headers: {
-          "X-Auth-Token": "7x177ybng0ujl4avpfueyb41nk144st",
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-      }
-    );
+    const res = await fetch(orderUrl, {
+      headers: {
+        'X-Auth-Token': token!,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
  
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ BigCommerce API error:", errorText);
-      return NextResponse.json({ error: "Failed to fetch order details" }, { status: 500 });
+    if (!res.ok) {
+      throw new Error(`BigCommerce API returned ${res.status}`);
     }
  
-    const fullOrder = await response.json();
-    console.log("✅ FULL ORDER DETAILS:", fullOrder);
+    const orderDetails = await res.json();
  
-    return NextResponse.json({ success: true, order: fullOrder }, { status: 200 });
-  } catch (error) {
-    console.error("❌ Error fetching order:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    // You can log or send this to your frontend/UI
+    console.log('✅ Order Details:', orderDetails);
+ 
+    return NextResponse.json({ message: 'Order processed', orderDetails });
+  } catch (err: any) {
+    console.error('❌ Failed to fetch full order:', err.message);
+    return NextResponse.json({ error: 'Failed to fetch full order' }, { status: 500 });
   }
 }
- 
-export async function GET() {
-  return NextResponse.json({ message: "Webhook endpoint ready" });
-}
- 
- 
- 
