@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
  
 export async function POST(req: NextRequest) {
   const body = await req.json();
- 
   const orderId = body?.data?.id;
+ 
   if (!orderId) {
-    return NextResponse.json({ error: 'Order ID not found in webhook' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Order ID not found in webhook' },
+      { status: 400 }
+    );
   }
  
   const storeHash = process.env.BC_STORE_HASH;
@@ -16,7 +19,7 @@ const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${or
   try {
     const res = await fetch(orderUrl, {
       headers: {
-        'X-Auth-Token': token!,
+        'X-Auth-Token': token || '',
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
@@ -27,13 +30,17 @@ const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${or
     }
  
     const orderDetails = await res.json();
- 
-    // You can log or send this to your frontend/UI
     console.log('✅ Order Details:', orderDetails);
  
-    return NextResponse.json({ message: 'Order processed', orderDetails });
+    return NextResponse.json({
+      message: 'Order processed',
+      orderDetails,
+    });
   } catch (err: any) {
     console.error('❌ Failed to fetch full order:', err.message);
-    return NextResponse.json({ error: 'Failed to fetch full order' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to fetch full order' },
+      { status: 500 }
+    );
   }
 }
