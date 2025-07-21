@@ -1,77 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
  
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const orderId = body?.data?.id;
- 
-  if (!orderId) {
-    return NextResponse.json(
-      { error: 'Order ID not found in webhook' },
-      { status: 400 }
-    );
-  }
- 
-  const storeHash = process.env.BC_STORE_HASH;
-  const token = process.env.BC_API_TOKEN;
- 
-const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
- 
   try {
-    const res = await fetch(orderUrl, {
-      headers: {
-        'X-Auth-Token': token!,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    });
+    const body = await req.json();
+    const orderId = body?.data?.id;
  
-    if (!res.ok) {
-      throw new Error(`BigCommerce API returned ${res.status}`);
+    if (!orderId) {
+      return NextResponse.json(
+        { error: 'Order ID not found in webhook' },
+        { status: 400 }
+      );
     }
  
-    const orderDetails = await res.json();
+    const storeHash = process.env.BC_STORE_HASH;
+    const token = process.env.BC_API_TOKEN;
  
-    // Fetch nested API links like products, shipping, fees
-    async function fetchBCData(url: string | undefined) {
-      if (!url) return null;
-      const res = await fetch(url, {
-        headers: {
-          'X-Auth-Token': token!,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!res.ok) {
-        console.error(`Failed to fetch ${url}: ${res.status}`);
-        return null;
+    const baseUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
+    const headers = {
+      'X-Auth-Token': token || '',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+ 
+    // Fetch main order details
+    const orderRes = await fetch(baseUrl, { headers });
+    if (!orderRes.ok) {
+      throw new Error(`Main order fetch failed with ${orderRes.status}`);
+    }
+    const orderDetails = await orderRes.json();
+ 
+    // Fetch linked sub-resources
+    const endpoints = ['fees', 'products', 'consignments', 'shipping_addresses', 'coupons'];
+    const subData = {};
+ 
+    for (const endpoint of endpoints) {
+      const res = await fetch(`${baseUrl}/${endpoint}`, { headers });
+      if (res.ok) {
+        // @ts-ignore
+        subData[endpoint] = await res.json();
       }
-      return await res.json();
     }
  
-    const [products, shippingAddresses, consignments, fees] = await Promise.all([
-      fetchBCData(orderDetails.products?.url),
-      fetchBCData(orderDetails.shipping_addresses?.url),
-      fetchBCData(orderDetails.consignments?.url),
-      fetchBCData(orderDetails.fees?.url),
-    ]);
+    const fullOrder = {
+      ...orderDetails,
+      ...subData,
+    };
  
-    // Attach fetched data into main orderDetails
-    orderDetails.products = products;
-    orderDetails.shipping_addresses = shippingAddresses;
-    orderDetails.consignments = consignments;
-    orderDetails.fees = fees;
- 
-    console.log('✅ Full Order Details:', orderDetails);
+    console.log('✅ Full Order:', fullOrder);
  
     return NextResponse.json({
-      message: 'Order processed',
-      orderDetails,
+      message: 'Order processed successfully',
+      fullOrder,
     });
-  } catch (err: any) {
-    console.error('❌ Failed to fetch full order:', err.message);
+  } catch (err) {
+    if (err instanceof Error) {
+      console.error('❌ Failed to fetch full order:', err.message);
+    } else {
+      console.error('❌ Unknown error:', err);
+    }
+ 
     return NextResponse.json(
       { error: 'Failed to fetch full order' },
       { status: 500 }
     );
   }
 }
+ 
