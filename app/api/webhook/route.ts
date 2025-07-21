@@ -22,21 +22,18 @@ export async function POST(req: NextRequest) {
       'Accept': 'application/json',
     };
  
-    // Fetch main order details
     const orderRes = await fetch(baseUrl, { headers });
     if (!orderRes.ok) {
       throw new Error(`Main order fetch failed with ${orderRes.status}`);
     }
     const orderDetails = await orderRes.json();
  
-    // Fetch linked sub-resources
     const endpoints = ['fees', 'products', 'consignments', 'shipping_addresses', 'coupons'];
-    const subData = {};
+    const subData: Record<string, unknown> = {};
  
     for (const endpoint of endpoints) {
       const res = await fetch(`${baseUrl}/${endpoint}`, { headers });
       if (res.ok) {
-        // @ts-ignore
         subData[endpoint] = await res.json();
       }
     }
@@ -54,7 +51,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof Error) {
-      console.error('❌ Failed to fetch full order:', err.message);
+      console.error('❌ Error:', err.message);
     } else {
       console.error('❌ Unknown error:', err);
     }
