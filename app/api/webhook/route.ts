@@ -16,53 +16,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing BigCommerce credentials' }, { status: 500 });
     }
  
+    const baseUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
+ 
     const headers = {
       'X-Auth-Token': token,
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
     };
  
-    const baseUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
+    // Step 1: Get main order details
+    const orderRes = await fetch(`${baseUrl}`, { headers });
+    if (!orderRes.ok) throw new Error(`Order fetch failed: ${orderRes.status}`);
+    const orderDetails: Record<string, unknown> = await orderRes.json();
  
-    // Get main order details
-    const res = await fetch(baseUrl, { headers });
-    if (!res.ok) {
-      throw new Error(`BigCommerce API returned ${res.status}`);
-    }
-    const orderDetails = await res.json();
+    // Step 2: Get sub-resources
+    const subEndpoints = ['products', 'fees', 'shipping_addresses', 'consignments', 'coupons'];
  
-    // Additional endpoints to fetch details from
-    const endpoints = ['fees', 'products', 'consignments', 'shipping_addresses', 'coupons'];
+    const subData: Record<string, unknown> = {};
  
-    const subData: Record<string, any> = {};
- 
-    for (const endpoint of endpoints) {
-      const res = await fetch(`${baseUrl}/${endpoint}`, { headers });
- 
-      if (res.ok) {
-        const text = await res.text();
- 
-        if (text) {
-          subData[endpoint] = JSON.parse(text);
-        } else {
-          subData[endpoint] = null;
+    await Promise.all(
+      subEndpoints.map(async (key) => {
+        try {
+          const res = await fetch(`${baseUrl}/${key}`, { headers });
+          if (res.ok) {
+            subData[key] = await res.json();
+          } else {
+            subData[key] = { error: `Failed to fetch ${key}` };
+          }
+        } catch (err) {
+          subData[key] = { error: `Exception while fetching ${key}` };
         }
-      } else {
-        subData[endpoint] = `Error ${res.status}`;
-      }
-    }
+      })
+    );
  
-    const fullOrderData = {
+    // Combine all data
+    const fullOrder = {
       ...orderDetails,
       ...subData,
     };
  
-    console.log('✅ Full Order:', fullOrderData);
+    console.log('✅ Full Order Details:', fullOrder);
  
-    return NextResponse.json({ message: 'Order processed', fullOrderData });
-  } catch (err: any) {
-    console.error('❌ Failed to process order:', err.message);
-    return NextResponse.json({ error: 'Failed to process order' }, { status: 500 });
+    return NextResponse.json({ message: 'Order processed', order: fullOrder });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      console.error('❌ Failed to process order:', err.message);
+    } else {
+      console.error('❌ Unknown error:', err);
+    }
+ 
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
  
