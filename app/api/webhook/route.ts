@@ -1,22 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
  
 export async function POST(req: NextRequest) {
+  let body;
+ 
   try {
-    const body = await req.json();
-    const orderId = body?.data?.id;
+    body = await req.json();
+  } catch (err) {
+    console.error('❌ Failed to parse JSON:', err);
+    return NextResponse.json(
+      { error: 'Invalid or empty JSON body' },
+      { status: 400 }
+    );
+  }
  
-    if (!orderId) {
-      return NextResponse.json(
-        { error: 'Order ID not found in webhook' },
-        { status: 400 }
-      );
-    }
+  const orderId = body?.data?.id;
  
-    const storeHash = process.env.BC_STORE_HASH;
-    const token = process.env.BC_API_TOKEN;
+  if (!orderId) {
+    return NextResponse.json(
+      { error: 'Order ID not found in webhook payload' },
+      { status: 400 }
+    );
+  }
  
-    const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
+  const storeHash = process.env.BC_STORE_HASH;
+  const token = process.env.BC_API_TOKEN;
+const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
  
+  try {
     const res = await fetch(orderUrl, {
       headers: {
         'X-Auth-Token': token!,
@@ -31,7 +41,7 @@ export async function POST(req: NextRequest) {
  
     const orderDetails = await res.json();
  
-    // Helper to fetch nested URLs
+    // Helper function
     async function fetchBCData(url: string | undefined) {
       if (!url) return null;
       const res = await fetch(url, {
@@ -42,13 +52,13 @@ export async function POST(req: NextRequest) {
         },
       });
       if (!res.ok) {
-        console.error(`Failed to fetch ${url}: ${res.status}`);
+        console.error(`❌ Failed to fetch ${url}: ${res.status}`);
         return null;
       }
       return await res.json();
     }
  
-    // Fetch and attach related data
+    // Attach related resources
     const [products, shippingAddresses, consignments, fees] = await Promise.all([
       fetchBCData(orderDetails.products?.url),
       fetchBCData(orderDetails.shipping_addresses?.url),
@@ -64,16 +74,15 @@ export async function POST(req: NextRequest) {
     console.log('✅ Full Order Details:', orderDetails);
  
     return NextResponse.json({
-      message: 'Order processed',
+      message: 'Order processed successfully',
       orderDetails,
     });
  
   } catch (err: unknown) {
-    console.error('❌ Error handling webhook:', err);
+    console.error('❌ Error handling webhook logic:', err);
     return NextResponse.json(
       { error: 'Internal server error', details: (err as Error).message },
       { status: 500 }
     );
   }
 }
- 
