@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
  
 export async function POST(req: NextRequest) {
-  // Safely check body before parsing
-  const contentLength = req.headers.get('content-length');
-  if (!contentLength || parseInt(contentLength) === 0) {
-    return NextResponse.json({ error: 'Empty request body' }, { status: 400 });
-  }
- 
-  let body;
-  try {
-    body = await req.json();
-  } catch (err) {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
- 
+  const body = await req.json();
   const orderId = body?.data?.id;
  
   if (!orderId) {
     return NextResponse.json(
-      { error: 'Order ID not found in webhook payload' },
+      { error: 'Order ID not found in webhook' },
       { status: 400 }
     );
   }
@@ -26,7 +14,7 @@ export async function POST(req: NextRequest) {
   const storeHash = process.env.BC_STORE_HASH;
   const token = process.env.BC_API_TOKEN;
  
-  const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
+const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
  
   try {
     const res = await fetch(orderUrl, {
@@ -38,15 +26,14 @@ export async function POST(req: NextRequest) {
     });
  
     if (!res.ok) {
-      throw new Error(`BigCommerce order fetch failed: ${res.status}`);
+      throw new Error(`BigCommerce API returned ${res.status}`);
     }
  
     const orderDetails = await res.json();
  
-    // SAFELY fetch related URLs
+    // Fetch nested API links like products, shipping, fees
     async function fetchBCData(url: string | undefined) {
       if (!url) return null;
- 
       const res = await fetch(url, {
         headers: {
           'X-Auth-Token': token!,
@@ -54,24 +41,13 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
         },
       });
- 
       if (!res.ok) {
         console.error(`Failed to fetch ${url}: ${res.status}`);
         return null;
       }
- 
-      const text = await res.text(); // safe parse fallback
-      if (!text) return null;
- 
-      try {
-        return JSON.parse(text);
-      } catch (err) {
-        console.error(`❌ JSON parse error for ${url}:`, err);
-        return null;
-      }
+      return await res.json();
     }
  
-    // Fetch related info
     const [products, shippingAddresses, consignments, fees] = await Promise.all([
       fetchBCData(orderDetails.products?.url),
       fetchBCData(orderDetails.shipping_addresses?.url),
@@ -79,22 +55,23 @@ export async function POST(req: NextRequest) {
       fetchBCData(orderDetails.fees?.url),
     ]);
  
+    // Attach fetched data into main orderDetails
     orderDetails.products = products;
     orderDetails.shipping_addresses = shippingAddresses;
     orderDetails.consignments = consignments;
     orderDetails.fees = fees;
  
+    console.log('✅ Full Order Details:', orderDetails);
+ 
     return NextResponse.json({
       message: 'Order processed',
       orderDetails,
     });
- 
-  } catch (err: unknown) {
-    console.error('❌ Error during order fetch or processing:', err);
+  } catch (err: any) {
+    console.error('❌ Failed to fetch full order:', err.message);
     return NextResponse.json(
-      { error: 'Internal server error', details: (err as Error).message },
+      { error: 'Failed to fetch full order' },
       { status: 500 }
     );
   }
 }
- 
