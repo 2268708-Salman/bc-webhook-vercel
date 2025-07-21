@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
  
 export async function POST(req: NextRequest) {
-  let body;
+  // Check if content exists before parsing
+  const contentLength = req.headers.get('content-length');
+  if (!contentLength || parseInt(contentLength) === 0) {
+    console.warn('⚠️ Webhook received with empty body');
+    return NextResponse.json(
+      { error: 'Empty request body' },
+      { status: 400 }
+    );
+  }
  
+  let body;
   try {
     body = await req.json();
   } catch (err) {
-    console.error('❌ Failed to parse JSON:', err);
+    console.error('❌ Failed to parse JSON body:', err);
     return NextResponse.json(
-      { error: 'Invalid or empty JSON body' },
+      { error: 'Invalid JSON body' },
       { status: 400 }
     );
   }
@@ -24,6 +33,7 @@ export async function POST(req: NextRequest) {
  
   const storeHash = process.env.BC_STORE_HASH;
   const token = process.env.BC_API_TOKEN;
+ 
 const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`;
  
   try {
@@ -58,7 +68,7 @@ const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${or
       return await res.json();
     }
  
-    // Attach related resources
+    // Attach related data
     const [products, shippingAddresses, consignments, fees] = await Promise.all([
       fetchBCData(orderDetails.products?.url),
       fetchBCData(orderDetails.shipping_addresses?.url),
@@ -74,12 +84,12 @@ const orderUrl = `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${or
     console.log('✅ Full Order Details:', orderDetails);
  
     return NextResponse.json({
-      message: 'Order processed successfully',
+      message: 'Order processed',
       orderDetails,
     });
  
   } catch (err: unknown) {
-    console.error('❌ Error handling webhook logic:', err);
+    console.error('❌ Error during order fetch or processing:', err);
     return NextResponse.json(
       { error: 'Internal server error', details: (err as Error).message },
       { status: 500 }
